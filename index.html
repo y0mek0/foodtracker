@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FoodTracker — Ввод еды</title>
+  <style>
+    body{font-family:sans-serif;background:#f7fafc;padding:18px;}
+    .top-bar{display:flex;justify-content:flex-end;margin-bottom:10px;}
+    .card{background:#fff;padding:14px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,0.1);margin-top:12px}
+    form{display:flex;gap:8px;flex-wrap:wrap}
+    input,button{padding:8px;border-radius:6px;border:1px solid #ddd; font-size:0.9rem;}
+    button{background:#2563eb;color:#fff;border:none;cursor:pointer}
+    #free-text{flex:1; min-width:200px;}
+    .input-flex{display:flex; gap:8px; margin-top:10px;}
+    #result-table{margin-top:10px;width:100%;border-collapse:collapse}
+    #result-table th, #result-table td{border:1px solid #eee;padding:6px;text-align:left;font-size:0.9rem}
+    .action-buttons{margin-top:10px;display:flex;gap:8px}
+  </style>
+</head>
+<body>
+  <div class="top-bar">
+    <button type="button" onclick="window.location.href='history.html'">История</button>
+  </div>
+
+  <h1>FoodTracker</h1>
+  <div class="card">
+    <form id="entry-form" onsubmit="return false">
+      <input id="food-input" placeholder="Название продукта" style="flex:1">
+      <input id="grams-input" type="number" min="1" value="100" style="width:80px">
+      <button id="add-btn" type="button">Добавить вручную</button>
+    </form>
+
+    <div class="input-flex">
+      <input id="free-text" placeholder="Свободный ввод">
+      <button id="ai-parse-btn" type="button">Распарсить текст через Nous</button>
+    </div>
+
+    <div class="action-buttons">
+      <button id="save-only-btn" type="button" style="display:none;">Сохранить</button>
+      <button id="save-entry-btn" type="button" style="display:none;">Сохранить и перейти в историю</button>
+      <button id="clear-entry-btn" type="button" style="display:none; background:#e53e3e;">Очистить</button>
+    </div>
+
+    <table id="result-table" style="display:none">
+      <thead><tr><th>Продукт</th><th>г</th><th>Ккал</th><th>Белки</th><th>Жиры</th><th>Углеводы</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script>
+    let entries = [];
+    const NOUS_KEY = ["sk","-0gyiv7l2zvcnfwhgehbj2s5"].join("");
+
+    const addBtn = document.getElementById('add-btn');
+    const foodInput = document.getElementById('food-input');
+    const gramsInput = document.getElementById('grams-input');
+    const saveBtn = document.getElementById('save-entry-btn');
+    const saveOnlyBtn = document.getElementById('save-only-btn');
+    const clearBtn = document.getElementById('clear-entry-btn');
+    const aiParseBtn = document.getElementById('ai-parse-btn');
+    const freeText = document.getElementById('free-text');
+    const resultTable = document.getElementById('result-table');
+    const resultBody = resultTable.querySelector('tbody');
+
+    function renderResult(){
+      if(entries.length===0){resultTable.style.display='none'; return;}
+      resultBody.innerHTML='';
+      entries.forEach(e=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML=`<td>${e.food}</td><td>${e.grams}</td><td>${e.calories}</td><td>${e.protein}</td><td>${e.fat}</td><td>${e.carbs}</td>`;
+        resultBody.appendChild(tr);
+      });
+      resultTable.style.display='table';
+      saveBtn.style.display='inline-block';
+      saveOnlyBtn.style.display='inline-block';
+      clearBtn.style.display='inline-block';
+    }
+
+    function addEntry(food, grams, calories=0, protein=0, fat=0, carbs=0){
+      const ts = new Date().toISOString();
+      entries.push({food, grams, calories, protein, fat, carbs, ts});
+    }
+
+    addBtn.addEventListener('click', ()=>{
+      const food = foodInput.value.trim();
+      const grams = Number(gramsInput.value);
+      if(!food||!grams){alert('Введите еду и вес');return;}
+      addEntry(food, grams);
+      foodInput.value=''; gramsInput.value=100;
+      renderResult();
+    });
+
+    aiParseBtn.addEventListener('click', async ()=>{
+      const text = freeText.value.trim();
+      if(!text){alert('Введите текст');return;}
+      aiParseBtn.disabled = true; aiParseBtn.textContent = 'Жду ответ...';
+      try{
+        const body = {
+          model: 'Hermes-4-70B',
+          messages:[
+            {role:'system', content:'You are a nutrition parsing assistant. Return JSON array with name, grams, calories, protein, fat, carbs.'},
+            {role:'user', content:text}
+          ],
+          max_tokens:400
+        };
+        const r = await fetch('https://inference-api.nousresearch.com/v1/chat/completions',{
+          method:'POST',
+          headers:{'Authorization': 'Bearer '+NOUS_KEY,'Content-Type':'application/json'},
+          body:JSON.stringify(body)
+        });
+        const json = await r.json();
+        const content = json?.choices?.[0]?.message?.content || '';
+        const firstIdx = content.indexOf('[');
+        const lastIdx = content.lastIndexOf(']');
+        if(firstIdx===-1||lastIdx===-1) throw new Error('Не нашёл JSON');
+        const parsed = JSON.parse(content.slice(firstIdx,lastIdx+1));
+        parsed.forEach(p=> addEntry(p.name, p.grams, p.calories, p.protein, p.fat, p.carbs));
+        freeText.value='';
+        renderResult();
+      }catch(e){alert('Ошибка: '+e.message)}
+      aiParseBtn.disabled=false; aiParseBtn.textContent='Распарсить текст через Nous';
+    });
+
+    saveOnlyBtn.addEventListener('click', ()=>{
+      const saved = JSON.parse(localStorage.getItem('food_history')||'[]');
+      const nowDate = new Date().toLocaleDateString();
+      saved.push({date: nowDate, items: entries});
+      localStorage.setItem('food_history', JSON.stringify(saved));
+      alert('Данные сохранены в локальное хранилище');
+    });
+
+    saveBtn.addEventListener('click', ()=>{
+      const saved = JSON.parse(localStorage.getItem('food_history')||'[]');
+      const nowDate = new Date().toLocaleDateString();
+      saved.push({date: nowDate, items: entries});
+      localStorage.setItem('food_history', JSON.stringify(saved));
+      entries = [];
+      renderResult();
+      window.location.href = 'history.html';
+    });
+
+    clearBtn.addEventListener('click', ()=>{
+      entries = [];
+      renderResult();
+    });
+  </script>
+</body>
+</html>

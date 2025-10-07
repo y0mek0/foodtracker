@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FoodTracker — История</title>
+<style>
+body {font-family:sans-serif; background:#f7fafc; margin:0; padding:18px;}
+.top-bar {display:flex; justify-content:space-between; margin-bottom:20px; gap:10px;}
+.btn-back {background:#2563eb; color:#fff; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.9rem; border:none;}
+button {padding:6px 10px; border:none; border-radius:6px; cursor:pointer; font-size:0.9rem;}
+.btn-red {background:#e53e3e; color:#fff;}
+
+.stats-container {display:flex; gap:15px; justify-content:center; margin-bottom:20px; flex-wrap:wrap;}
+.stats-block {flex:1 1 180px; text-align:center; padding:12px; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,0.1); color:#1a202c;}
+.stats-title {font-weight:bold; font-size:1.1rem; margin-bottom:6px;}
+.stats-item {margin:2px 0; font-weight:600;}
+.stats-today {background:#d1fae5;} /* светло-зеленый */
+.stats-week {background:#ffedd5;} /* светло-оранжевый */
+.stats-month {background:#dbeafe;} /* светло-голубой */
+
+.meals-wrapper {display:flex; flex-direction:column; gap:12px;}
+.meal-row {background:#fff; border-radius:8px; padding:10px; box-shadow:0 1px 4px rgba(0,0,0,0.08); width:60%;}
+.meal-header {display:flex; justify-content:space-between; align-items:center; font-weight:bold; margin-bottom:6px; color:#1a202c;}
+.meal-table {width:100%; border-collapse:collapse; font-size:0.85rem; table-layout:fixed;}
+.meal-table th, .meal-table td {padding:6px; text-align:center; border-bottom:1px solid #e2e8f0; word-wrap:break-word;}
+.meal-table tr:nth-child(even){background:#f9fafb;}
+.meal-sum {margin-top:6px; font-weight:bold; text-align:center;}
+.delete-btn {background:#e53e3e; color:#fff; border:none; border-radius:4px; width:18px; height:18px; font-size:0.7rem; display:flex; align-items:center; justify-content:center; cursor:pointer;}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <button class="btn-back" onclick="window.location.href='index.html'">Назад</button>
+  <button id="clear-history-btn" class="btn-red">Очистить историю</button>
+</div>
+
+<div class="stats-container" id="stats-container"></div>
+
+<div class="meals-wrapper" id="meals-container"></div>
+
+<script>
+let saved = JSON.parse(localStorage.getItem('food_history') || '[]');
+const mealsContainer = document.getElementById('meals-container');
+const statsContainer = document.getElementById('stats-container');
+
+function renderStats(){
+  let today={cal:0,prot:0,fat:0,carbs:0};
+  let week={cal:0,prot:0,fat:0,carbs:0};
+  let month={cal:0,prot:0,fat:0,carbs:0};
+  const now=new Date();
+
+  saved.forEach(meal=>{
+    if(!meal.items) return;
+    meal.items.forEach(item=>{
+      const d=new Date(item.ts);
+      const diffDays=(now-d)/(1000*60*60*24);
+      if(d.toDateString()===now.toDateString()){ today.cal+=item.calories||0; today.prot+=item.protein||0; today.fat+=item.fat||0; today.carbs+=item.carbs||0; }
+      if(diffDays<=7){ week.cal+=item.calories||0; week.prot+=item.protein||0; week.fat+=item.fat||0; week.carbs+=item.carbs||0; }
+      if(d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear()){ month.cal+=item.calories||0; month.prot+=item.protein||0; month.fat+=item.fat||0; month.carbs+=item.carbs||0; }
+    });
+  });
+
+  statsContainer.innerHTML=`
+    <div class="stats-block stats-today">
+      <div class="stats-title">Сегодня</div>
+      <div class="stats-item">Калории: ${today.cal}</div>
+      <div class="stats-item">Белки: ${today.prot.toFixed(1)}</div>
+      <div class="stats-item">Жиры: ${today.fat.toFixed(1)}</div>
+      <div class="stats-item">Углеводы: ${today.carbs.toFixed(1)}</div>
+    </div>
+    <div class="stats-block stats-week">
+      <div class="stats-title">За неделю</div>
+      <div class="stats-item">Калории: ${week.cal}</div>
+      <div class="stats-item">Белки: ${week.prot.toFixed(1)}</div>
+      <div class="stats-item">Жиры: ${week.fat.toFixed(1)}</div>
+      <div class="stats-item">Углеводы: ${week.carbs.toFixed(1)}</div>
+    </div>
+    <div class="stats-block stats-month">
+      <div class="stats-title">За месяц</div>
+      <div class="stats-item">Калории: ${month.cal}</div>
+      <div class="stats-item">Белки: ${month.prot.toFixed(1)}</div>
+      <div class="stats-item">Жиры: ${month.fat.toFixed(1)}</div>
+      <div class="stats-item">Углеводы: ${month.carbs.toFixed(1)}</div>
+    </div>
+  `;
+}
+
+function renderMeals(){
+  mealsContainer.innerHTML='';
+  if(saved.length===0){
+    mealsContainer.innerHTML='<p>История пуста</p>';
+    statsContainer.innerHTML='';
+    return;
+  }
+
+  saved.forEach((meal,index)=>{
+    const row=document.createElement('div');
+    row.className='meal-row';
+
+    const header=document.createElement('div');
+    header.className='meal-header';
+    header.innerHTML=`<span>Прием пищи ${index+1} — ${meal.date||'Без даты'}</span>`;
+
+    const delBtn=document.createElement('button');
+    delBtn.className='delete-btn';
+    delBtn.textContent='✕';
+    delBtn.onclick=()=>{
+      if(confirm('Удалить этот прием пищи?')){
+        saved.splice(index,1);
+        localStorage.setItem('food_history',JSON.stringify(saved));
+        renderMeals();
+      }
+    };
+    header.appendChild(delBtn);
+
+    const table=document.createElement('table');
+    table.className='meal-table';
+    table.innerHTML='<thead><tr><th>Продукт</th><th>г</th><th>Ккал</th><th>Белки</th><th>Жиры</th><th>Углеводы</th></tr></thead><tbody></tbody>';
+    const tbody=table.querySelector('tbody');
+
+    let sumCal=0, sumProt=0, sumFat=0, sumCarbs=0;
+    if(meal.items){
+      meal.items.forEach(item=>{
+        sumCal+=item.calories||0; sumProt+=item.protein||0; sumFat+=item.fat||0; sumCarbs+=item.carbs||0;
+        const tr=document.createElement('tr');
+        tr.innerHTML=`<td>${item.food}</td><td>${item.grams}</td><td>${item.calories}</td><td>${item.protein}</td><td>${item.fat}</td><td>${item.carbs}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    const sumDiv=document.createElement('div');
+    sumDiv.className='meal-sum';
+    sumDiv.textContent=`Итого: ${sumCal} ккал | ${sumProt.toFixed(1)} белки | ${sumFat.toFixed(1)} жиры | ${sumCarbs.toFixed(1)} углеводы`;
+
+    row.appendChild(header);
+    row.appendChild(table);
+    row.appendChild(sumDiv);
+
+    mealsContainer.appendChild(row);
+  });
+  renderStats();
+}
+
+renderMeals();
+
+document.getElementById('clear-history-btn').addEventListener('click',()=>{
+  if(confirm('Вы уверены, что хотите очистить всю историю?')){
+    saved=[];
+    localStorage.setItem('food_history',JSON.stringify(saved));
+    renderMeals();
+  }
+});
+</script>
+</body>
+</html>
