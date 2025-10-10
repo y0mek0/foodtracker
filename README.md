@@ -51,4 +51,4 @@ No installation required — it runs fully offline.
 This project is **not licensed**.  
 All rights reserved © 2025 [@y0mek0](https://github.com/y0mek0)
 
-You may not use, copy, modify, or distribute this code without permission.//
+You may not use, copy, modify, or distribute this code without permission.///
